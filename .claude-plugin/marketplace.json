@@ -1,0 +1,17 @@
+{
+  "name": "claude-mods",
+  "owner": { "name": "canada87" },
+  "metadata": { "description": "Mod personali per Claude Code: interfaccia e comportamento." },
+  "plugins": [
+    {
+      "name": "usage-band",
+      "source": "./plugins/usage-band",
+      "description": "Barra HUD cyberpunk sopra il prompt con i limiti d'uso delle 5 ore e della settimana."
+    },
+    {
+      "name": "cyberpunk-look",
+      "source": "./plugins/cyberpunk-look",
+      "description": "Tema cyberpunk notturno per l'app desktop con città al neon animata sullo sfondo."
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+import { expect, test } from 'claude-code/testing'
+
+const BAND = {
+  plugin: 'usage-band',
+  component: 'AbovePrompt',
+  requestId: 'usage-band',
+  props: {
+    hasSurvey: false,
+    isCollapsed: false,
+    isWorking: false,
+    maxRows: 3,
+    bodyColumns: 120,
+    scroll: { offset: 0, bodyRows: 3 },
+    view: {},
+  },
+} as const
+
+const NOW = Date.parse('2026-11-17T10:00:00Z')
+
+test('both meters draw with percent and reset, on every surface', async ($, on) => {
+  on('state.get', (_, e) => {
+    const key = (e as { key: string }).key
+    if (key === 'limits') {
+      return {
+        value: {
+          value: {
+            five: { percentUsed: 47.3, resetsAt: '2026-11-17T12:13:00Z' },
+            week: { percentUsed: 92, resetsAt: '2026-11-20T14:00:00Z' },
+          },
+          version: 1,
+        },
+      }
+    }
+    return { value: { value: NOW, version: 1 } }
+  })
+
+  for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
+    const ui = await $.ui.mount({ ...BAND, surface })
+    expect((await ui.find({ type: 'Text', text: /48%/ }))?.text).toContain('48%')
+    expect((await ui.find({ type: 'Text', text: /92%/ }))?.text).toContain('92%')
+    expect((await ui.find({ type: 'Text', text: /T-2h13m/ }))?.text).toContain('T-2h13m')
+    expect((await ui.find({ type: 'Text', text: /T-3g04h/ }))?.text).toContain('T-3g04h')
+    await ui.unmount()
+  }
+})
+
+test('with no reading yet the bars still show, empty', async $ => {
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /5H/ }))?.text).toBe('[5H]')
+  expect((await ui.find({ type: 'Text', text: /7G/ }))?.text).toBe('[7G]')
+  await ui.unmount()
+})

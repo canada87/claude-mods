@@ -1,0 +1,10 @@
+{
+  "name": "usage-band",
+  "version": "0.1.0",
+  "description": "Due barre compatte sopra il prompt: limite delle 5 ore e limite settimanale.",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "canada87"
+  },
+  "license": "MIT"
+}
