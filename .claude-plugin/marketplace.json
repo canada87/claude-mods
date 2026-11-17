@@ -10,7 +10,7 @@
     {
       "name": "mod-hub",
       "source": "./plugins/mod-hub",
-      "description": "Pannello laterale con le mod installate e un interruttore per ciascuna (comando /mods)."
+      "description": "Pannello laterale (/mods) con connettori da accendere e spegnere, skill da copiare nel messaggio e mod installate."
     },
     {
       "name": "usage-band",
