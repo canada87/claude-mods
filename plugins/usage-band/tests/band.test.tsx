@@ -38,15 +38,37 @@ test('both meters draw with percent and reset, on every surface', async ($, on) 
     const ui = await $.ui.mount({ ...BAND, surface })
     expect((await ui.find({ type: 'Text', text: /48%/ }))?.text).toContain('48%')
     expect((await ui.find({ type: 'Text', text: /92%/ }))?.text).toContain('92%')
-    expect((await ui.find({ type: 'Text', text: /T-2h13m/ }))?.text).toContain('T-2h13m')
-    expect((await ui.find({ type: 'Text', text: /T-3g04h/ }))?.text).toContain('T-3g04h')
+    expect((await ui.find({ type: 'Text', text: /2h 13m/ }))?.text).toContain('2h 13m')
+    expect((await ui.find({ type: 'Text', text: /3g 4h/ }))?.text).toContain('3g 4h')
     await ui.unmount()
   }
 })
 
 test('with no reading yet the bars still show, empty', async $ => {
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /5H/ }))?.text).toBe('[5H]')
-  expect((await ui.find({ type: 'Text', text: /7G/ }))?.text).toBe('[7G]')
+  expect((await ui.find({ type: 'Text', text: /^5h$/ }))?.text).toBe('5h')
+  expect((await ui.find({ type: 'Text', text: /^7g$/ }))?.text).toBe('7g')
+  await ui.unmount()
+})
+
+test('the weekly bar carries six day hairlines, the 5-hour bar four hour ones', async ($, on) => {
+  on('state.get', (_, e) => {
+    const key = (e as { key: string }).key
+    if (key === 'limits') {
+      return {
+        value: {
+          value: {
+            five: { percentUsed: 40, resetsAt: '2026-11-17T12:13:00Z' },
+            week: { percentUsed: 30, resetsAt: '2026-11-20T14:00:00Z' },
+          },
+          version: 1,
+        },
+      }
+    }
+    return { value: { value: NOW, version: 1 } }
+  })
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await ui.findAll({ type: 'Text', text: '▏' })).toHaveLength(10)
   await ui.unmount()
 })

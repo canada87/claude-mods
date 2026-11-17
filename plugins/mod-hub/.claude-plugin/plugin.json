@@ -1,0 +1,8 @@
+{
+  "name": "mod-hub",
+  "version": "0.1.0",
+  "description": "Pannello laterale con tutte le mod installate e un interruttore per attivarle o disattivarle.",
+  "author": { "name": "canada87" },
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}

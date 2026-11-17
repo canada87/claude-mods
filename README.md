@@ -9,7 +9,8 @@ disattivano le singole mod.
 
 | Mod | Cosa fa |
 | --- | --- |
-| `usage-band` | Riga HUD cyberpunk sopra il prompt con due barre a segmenti: limite d'uso delle 5 ore e limite settimanale, percentuale e conto alla rovescia al reset. Giallo dal 70%, rosso dal 90%. |
+| `mod-hub` | Pannello laterale (`/mods`) con tutte le mod installate e un interruttore per attivarle o disattivarle. |
+| `usage-band` | Riga sopra il prompt con due barre in stile aurora (verde acqua → lilla): limite d'uso delle 5 ore e limite settimanale, percentuale e conto alla rovescia al reset. Ambra dal 70%, corallo dal 90%. |
 | `cyberpunk-look` | Tema scuro per l'app desktop: superfici indaco, neon ciano e magenta, città notturna animata sotto la pioggia come sfondo. |
 
 ## Installazione
@@ -33,6 +34,7 @@ Nell'app desktop: **+** accanto alla casella del messaggio → **Plugins** →
 
 ## Attivare e disattivare
 
+- Con `mod-hub`: scrivi `/mods` e usa gli interruttori nel pannello, poi `/reload-plugins`.
 - App desktop: **+** → **Plugins**, interruttore accanto a ogni mod.
 - Terminale: `claude plugin enable <mod>@claude-mods` / `claude plugin disable <mod>@claude-mods`.
 
