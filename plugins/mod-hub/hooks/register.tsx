@@ -57,18 +57,21 @@ async function env(read: () => Promise<string | undefined>): Promise<string | un
 type InstalledRow = { installPath?: unknown }
 type InstalledFile = { plugins?: Record<string, InstalledRow[]> }
 
+// Windows paths come back with backslashes; every path here is built with /.
+const slash = (path: string) => path.replace(/\\/g, '/')
+
 // Claude Code's own folder: CLAUDE_CONFIG_DIR, else ~/.claude.
 async function configDir($: EngineInterface): Promise<string> {
   const set = await env(() => $.env.get('CLAUDE_CONFIG_DIR'))
-  if (set) return set.replace(/\\/g, '/')
+  if (set) return slash(set)
   const home = (await env(() => $.env.get('USERPROFILE'))) ?? (await env(() => $.env.get('HOME'))) ?? '~'
-  return `${home.replace(/\\/g, '/')}/.claude`
+  return `${slash(home)}/.claude`
 }
 
 async function describe($: EngineInterface, folder: string | undefined): Promise<string> {
   if (!folder) return ''
   try {
-    const manifest = JSON.parse(await $.fs.read(`${folder.replace(/\\/g, '/')}/.claude-plugin/plugin.json`)) as {
+    const manifest = JSON.parse(await $.fs.read(`${slash(folder)}/.claude-plugin/plugin.json`)) as {
       description?: unknown
     }
     return typeof manifest.description === 'string' ? manifest.description : ''
@@ -137,45 +140,89 @@ async function writeEnabled($: EngineInterface, id: string, wanted: boolean): Pr
   await $.fs.write(path, `${JSON.stringify({ ...settings, enabledPlugins }, null, 2)}\n`)
 }
 
-// The desktop app refuses a mod the write (its own settings are not a mod's
-// to change): then Claude is asked, as the connector switch does. The error
-// stays on the card, so a refusal is never a press that seems to do nothing.
+// Every `claude` worth trying, newest first: the one the session runs on
+// where the engine passes it, the binary the desktop app carries (it is not
+// on PATH: %LOCALAPPDATA%/Claude-Data/<profile>/claude-code/<version>/<build>/),
+// then the PATH one.
+async function claudeExes($: EngineInterface): Promise<string[]> {
+  const exes: string[] = []
+  const exec = await env(() => $.env.get('CLAUDE_CODE_EXECPATH'))
+  if (exec) exes.push(slash(exec))
+  const localAppData = await env(() => $.env.get('LOCALAPPDATA'))
+  if (localAppData) {
+    const found: { path: string; mtimeMs: number }[] = []
+    const dirs = async (path: string): Promise<string[]> => {
+      try {
+        return (await $.fs.list(path)).filter(e => e.kind === 'dir').map(e => `${path}/${e.name}`)
+      } catch {
+        return []
+      }
+    }
+    for (const profile of await dirs(`${slash(localAppData)}/Claude-Data`)) {
+      for (const version of await dirs(`${profile}/claude-code`)) {
+        for (const build of await dirs(version)) {
+          const path = `${build}/claude.exe`
+          try {
+            found.push({ path, mtimeMs: (await $.fs.stat(path)).mtimeMs })
+          } catch {
+            // not this build
+          }
+        }
+      }
+    }
+    found.sort((a, b) => b.mtimeMs - a.mtimeMs)
+    exes.push(...found.map(f => f.path))
+  }
+  exes.push('claude')
+  return exes
+}
+
+// `claude plugin enable|disable`, run on the first binary that starts.
+async function cliEnabled($: EngineInterface, id: string, wanted: boolean): Promise<void> {
+  let last: unknown = new Error('nessun claude trovato')
+  for (const exe of await claudeExes($)) {
+    try {
+      const { exitCode, stderr } = await $.process.run([exe, 'plugin', wanted ? 'enable' : 'disable', id])
+      if (exitCode === 0) return
+      last = new Error(stderr.trim() || `exit ${exitCode}`)
+    } catch (err) {
+      last = err
+    }
+  }
+  throw last
+}
+
+// A press costs nothing: the file first, then the CLI, and where the app
+// refuses both the card says where to do it by hand. Claude is never asked.
 async function toggleMod($: EngineInterface, mod: Mod): Promise<void> {
   const wanted = !mod.enabled
   const verb = wanted ? 'attivata' : 'disattivata'
   await update($, hub, h => ({ ...h, busy: mod.id, error: null }))
   try {
-    // Claude may have written it already, asked by an earlier press: the row
-    // catches up only at the end of that turn, so never ask for it twice.
-    if (((await readEnabled($, await configDir($)))[mod.id] === true) === wanted) {
-      await update($, hub, h => ({ ...h, needsReload: true }))
-      $.ui.toast(`${mod.name} è già ${verb}: premi Ricarica per applicare`)
-    } else {
-      await writeEnabled($, mod.id, wanted)
-      await update($, hub, h => ({ ...h, needsReload: true }))
-      $.ui.toast(`${mod.name} ${verb}: premi Ricarica per applicare`)
+    // Already what the press asks for: nothing to write.
+    if (((await readEnabled($, await configDir($)))[mod.id] === true) !== wanted) {
+      try {
+        await writeEnabled($, mod.id, wanted)
+      } catch (writeErr) {
+        try {
+          await cliEnabled($, mod.id, wanted)
+        } catch (cliErr) {
+          throw new Error(`${message(writeErr)}; con la CLI: ${message(cliErr)}`)
+        }
+      }
     }
+    await update($, hub, h => ({ ...h, needsReload: true }))
+    $.ui.toast(`${mod.name} ${verb}: premi Ricarica per applicare`)
     await refreshMods($)
   } catch (err) {
-    // Sent framed as this plugin's message (no asUser): the transcript and
-    // the model see it came from the panel's switch, not typed by the person.
-    const ask =
-      `Dal pannello Mod è stato premuto l'interruttore di una mod: metti ` +
-      `"${mod.id}": ${wanted} dentro enabledPlugins nel settings.json di Claude Code ` +
-      `(${await configDir($)}/settings.json), lasciando il resto del file com'è. ` +
-      `Poi dimmi di premere ↻ Ricarica nel pannello.`
-    $.prompt.submit({ text: ask }).catch(async (sendErr: unknown) => {
-      await update($, hub, h => ({ ...h, error: `${mod.name}: ${message(sendErr)}` }))
-    })
     await update($, hub, h => ({
       ...h,
-      needsReload: true,
-      error: `${mod.name}: l'app non mi lascia scrivere settings.json (${message(err)}). L'ho chiesto a Claude.`,
+      error: `${mod.name}: non riesco a cambiarla da qui (${message(err)}). Usa + → Plugins dell'app.`,
     }))
-    $.ui.toast(`Chiesto a Claude: ${mod.name} ${verb} appena la sessione è libera`)
   }
   await update($, hub, h => ({ ...h, busy: null }))
 }
+
 // ---------------------------------------------------------------- connectors
 //
 // The app's Connectors menu mixes three sources, and so does this list:

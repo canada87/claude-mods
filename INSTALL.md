@@ -134,12 +134,16 @@ si legge da `installed_plugins.json` e da `enabledPlugins`, senza avviare
 niente. Se vedi ancora la scheda vuota, fai `/reload-plugins`.
 
 **Premo l’interruttore nel pannello e la mod resta accesa.**
-Dalla 0.2.1 il pannello prova a scrivere `enabledPlugins` in
-`~/.claude/settings.json` e, se l’app desktop rifiuta la scrittura a una mod,
-chiede a Claude di farla e lascia il motivo in rosso in fondo alla scheda.
-Prima della 0.2.1 il rifiuto veniva cancellato subito dopo: il tocco sembrava
-non fare niente. La riga si aggiorna a fine turno, appena Claude ha scritto;
-in ogni caso la modifica vale dopo `/reload-plugins`.
+Il pannello prova prima a scrivere `enabledPlugins` in
+`~/.claude/settings.json`. Se l’app desktop rifiuta quella scrittura a una
+mod, ripiega su `claude plugin enable|disable`, lanciato sul binario che
+l’app si porta dentro `%LOCALAPPDATA%/Claude-Data/<profilo>/claude-code/...`
+(non è nel PATH: il pannello lo trova elencando le cartelle). Se non passa
+nemmeno quello, la scheda dice di usare **+ → Plugins** e scrive il motivo in
+rosso. Il cambio vale dopo `/reload-plugins`.
+
+Un interruttore non manda mai niente a Claude: premerlo non consuma token.
+Le versioni 0.2.1 e 0.2.2 lo facevano — era un errore, corretto nella 0.3.0.
 
 **La mod non compare per niente** (nessun `⚙ Mod`, nessuna barra).
 Controlla che sia in `enabledPlugins` con valore `true` in

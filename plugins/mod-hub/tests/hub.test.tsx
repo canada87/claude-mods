@@ -19,6 +19,17 @@ const PANE = {
 
 const LOCAL = '/local'
 const PROFILE = `${LOCAL}/Claude-Data/claude_abc`
+// The binary the desktop app carries: not on PATH, found by listing.
+const EXE = `${PROFILE}/claude-code/2.1.326/d31a4581af92/claude.exe`
+
+const TREE: Record<string, { name: string; kind: string }[]> = {
+  [`${LOCAL}/Claude-Data`]: [
+    { name: 'README.txt', kind: 'file' },
+    { name: 'claude_abc', kind: 'dir' },
+  ],
+  [`${PROFILE}/claude-code`]: [{ name: '2.1.326', kind: 'dir' }],
+  [`${PROFILE}/claude-code/2.1.326`]: [{ name: 'd31a4581af92', kind: 'dir' }],
+}
 const HOME = '/home/u'
 const CATEGORIES = `${HOME}/.claude/mod-hub/categorie.json`
 const INSTALLED_FILE = `${HOME}/.claude/plugins/installed_plugins.json`
@@ -86,7 +97,7 @@ type Seen = {
   fills: string[]
 }
 
-type Options = { refuseSwitch?: boolean; refuseWrite?: boolean; categories?: string; noApp?: boolean }
+type Options = { refuseSwitch?: boolean; refuseWrite?: boolean; refuseRun?: boolean; categories?: string; noApp?: boolean }
 
 function engine(on: On, options: Options = {}): Seen {
   const seen: Seen = { runs: [], writes: [], files: {}, mcp: [], prompts: [], copies: [], reads: [], listed: false, opens: [], closes: [], fills: [] }
@@ -100,12 +111,9 @@ function engine(on: On, options: Options = {}): Seen {
   // A mod is not passed CLAUDE_CODE_EXECPATH: the profile is found by listing.
   const vars: Record<string, string> = { LOCALAPPDATA: LOCAL, USERPROFILE: HOME }
   on('fs.list', (_, e) => {
-    if (norm(e.path ?? '') !== `${LOCAL}/Claude-Data`) throw new Error('ENOENT')
-    const entries = [
-      { name: 'README.txt', kind: 'file' },
-      { name: 'claude_abc', kind: 'dir' },
-    ]
-    return { value: entries.map(x => ({ ...x, size: 0, mtimeMs: 0, isLink: false })) } as never
+    const rows = TREE[norm(e.path ?? '')]
+    if (rows === undefined) throw new Error('ENOENT')
+    return { value: rows.map(x => ({ ...x, size: 0, mtimeMs: 0, isLink: false })) } as never
   })
   on('fs.stat', () => ({ value: { kind: 'file', size: 1, mtimeMs: 1, isLink: false } }) as never)
   on('command.register', () => ({ value: { command: 'mods' } }))
@@ -133,6 +141,7 @@ function engine(on: On, options: Options = {}): Seen {
   on('process.run', (_, e) => {
     const argv = [...(e as { argv: readonly string[] }).argv]
     seen.runs.push(argv)
+    if (options.refuseRun && argv.includes('plugin')) throw new Error('spawn refused')
     return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('command.list', () => {
@@ -405,44 +414,56 @@ test('the row goes off at once, before the reload', async ($, on) => {
   await ui.unmount()
 })
 
-test('where the app refuses the write, Claude is asked to flip the mod', async ($, on) => {
+test('where the app refuses the write, the CLI does it and nobody is asked', async ($, on) => {
   const seen = engine(on, { refuseWrite: true })
   await start($, seen)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'usage-band@claude-mods' })
-  await settle(() => seen.prompts.length > 0)
+  await settle(() => seen.runs.length > 0)
   for (let i = 0; i < 300; i++) await Promise.resolve()
 
-  expect(seen.prompts[0]).toContain('"usage-band@claude-mods": false')
-  expect(seen.prompts[0]).toContain('enabledPlugins')
-  expect(seen.prompts[0]).toContain(SETTINGS_FILE)
-  // The refusal stays on the card: a press never looks like it did nothing.
-  expect((await ui.find({ type: 'Text', text: /non mi lascia scrivere/ }))?.text).toContain('usage-band')
+  // The binary the app carries, found by listing: `claude` is not on PATH.
+  expect(seen.runs[0]).toEqual([EXE, 'plugin', 'disable', 'usage-band@claude-mods'])
+  // A switch costs no tokens: Claude is never sent anything.
+  expect(seen.prompts).toEqual([])
+  await ui.unmount()
+})
+
+test('where both are refused the card says where to do it, still asking nobody', async ($, on) => {
+  const seen = engine(on, { refuseWrite: true, refuseRun: true })
+  await start($, seen)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'usage-band@claude-mods' })
+  await settle(() => seen.runs.length > 0)
+  for (let i = 0; i < 300; i++) await Promise.resolve()
+
+  expect(seen.prompts).toEqual([])
+  expect((await ui.find({ type: 'Text', text: /Plugins/ }))?.text).toContain('usage-band')
   await ui.unmount()
 })
 
 // What a turn's end looks like to a hook.
 const TURN = { answer: 'ok', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as const
 
-test('the row catches up when a turn ends, the refusal still on the card', async ($, on) => {
-  const seen = engine(on, { refuseWrite: true })
+test('the row catches up when a turn ends, the message still on the card', async ($, on) => {
+  const seen = engine(on, { refuseWrite: true, refuseRun: true })
   await start($, seen)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'usage-band@claude-mods' })
-  await settle(() => seen.prompts.length > 0)
+  await settle(() => seen.runs.length > 0)
 
-  // Claude writes what the panel asked for; the turn ends.
+  // Switched from the app's own Plugins menu instead; the turn ends.
   seen.files[SETTINGS_FILE] = JSON.stringify({ enabledPlugins: { 'usage-band@claude-mods': false, 'mod-hub@claude-mods': true } })
   await $.turn.complete(TURN)
   for (let i = 0; i < 300; i++) await Promise.resolve()
 
   expect((await ui.find({ key: 'usage-band@claude-mods' }))?.text).toContain('Spenta')
-  expect((await ui.find({ type: 'Text', text: /non mi lascia scrivere/ }))?.text).toContain('usage-band')
+  expect((await ui.find({ type: 'Text', text: /Plugins/ }))?.text).toContain('usage-band')
   await ui.unmount()
 })
 
-test('a mod Claude already switched is not asked for twice', async ($, on) => {
-  const seen = engine(on, { refuseWrite: true })
+test('a mod already in the wanted state is not written again', async ($, on) => {
+  const seen = engine(on)
   await start($, seen)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   // The file says off while the row, drawn before, still says on.
@@ -450,7 +471,8 @@ test('a mod Claude already switched is not asked for twice', async ($, on) => {
   await ui.press({ key: 'usage-band@claude-mods' })
   for (let i = 0; i < 300; i++) await Promise.resolve()
 
-  expect(seen.prompts).toEqual([])
+  expect(seen.writes).toEqual([])
+  expect(seen.runs).toEqual([])
   expect((await ui.find({ key: 'usage-band@claude-mods' }))?.text).toContain('Spenta')
   await ui.unmount()
 })
