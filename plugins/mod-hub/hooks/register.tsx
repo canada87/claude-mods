@@ -123,27 +123,50 @@ async function refreshMods($: EngineInterface): Promise<void> {
 }
 
 // A switch writes `enabledPlugins` in the person's own settings.json, the
-// same key and file `claude plugin enable` writes; the reload applies it.
-async function toggleMod($: EngineInterface, mod: Mod): Promise<void> {
-  await update($, hub, h => ({ ...h, busy: mod.id, error: null }))
-  try {
-    const path = `${await configDir($)}/settings.json`
-    let settings: Record<string, unknown> = {}
-    if (await $.fs.exists(path)) {
-      // A file that is there and unreadable is never written over.
-      settings = JSON.parse(await $.fs.read(path)) as Record<string, unknown>
-    }
-    const enabledPlugins = { ...enabledMap(settings.enabledPlugins), [mod.id]: !mod.enabled }
-    await $.fs.write(path, `${JSON.stringify({ ...settings, enabledPlugins }, null, 2)}\n`)
-    await update($, hub, h => ({ ...h, needsReload: true }))
-    $.ui.toast(`${mod.name} ${mod.enabled ? 'disattivata' : 'attivata'}: premi Ricarica per applicare`)
-  } catch (err) {
-    await update($, hub, h => ({ ...h, error: `${mod.name}: ${message(err)}` }))
+// same key and file `claude plugin enable` writes.
+async function writeEnabled($: EngineInterface, id: string, wanted: boolean): Promise<void> {
+  const path = `${await configDir($)}/settings.json`
+  let settings: Record<string, unknown> = {}
+  if (await $.fs.exists(path)) {
+    // A file that is there and unreadable is never written over.
+    settings = JSON.parse(await $.fs.read(path)) as Record<string, unknown>
   }
-  await refreshMods($)
-  await update($, hub, h => ({ ...h, busy: null }))
+  const enabledPlugins = { ...enabledMap(settings.enabledPlugins), [id]: wanted }
+  await $.fs.write(path, `${JSON.stringify({ ...settings, enabledPlugins }, null, 2)}\n`)
 }
 
+// The desktop app refuses a mod the write (its own settings are not a mod's
+// to change): then Claude is asked, as the connector switch does. The error
+// stays on the card, so a refusal is never a press that seems to do nothing.
+async function toggleMod($: EngineInterface, mod: Mod): Promise<void> {
+  const wanted = !mod.enabled
+  const verb = wanted ? 'attivata' : 'disattivata'
+  await update($, hub, h => ({ ...h, busy: mod.id, error: null }))
+  try {
+    await writeEnabled($, mod.id, wanted)
+    await update($, hub, h => ({ ...h, needsReload: true }))
+    $.ui.toast(`${mod.name} ${verb}: premi Ricarica per applicare`)
+    await refreshMods($)
+  } catch (err) {
+    // Sent framed as this plugin's message (no asUser): the transcript and
+    // the model see it came from the panel's switch, not typed by the person.
+    const ask =
+      `Dal pannello Mod è stato premuto l'interruttore di una mod: metti ` +
+      `"${mod.id}": ${wanted} dentro enabledPlugins nel settings.json di Claude Code ` +
+      `(${await configDir($)}/settings.json), lasciando il resto del file com'è. ` +
+      `Poi dimmi di premere ↻ Ricarica nel pannello.`
+    $.prompt.submit({ text: ask }).catch(async (sendErr: unknown) => {
+      await update($, hub, h => ({ ...h, error: `${mod.name}: ${message(sendErr)}` }))
+    })
+    await update($, hub, h => ({
+      ...h,
+      needsReload: true,
+      error: `${mod.name}: l'app non mi lascia scrivere settings.json (${message(err)}). L'ho chiesto a Claude.`,
+    }))
+    $.ui.toast(`Chiesto a Claude: ${mod.name} ${verb} appena la sessione è libera`)
+  }
+  await update($, hub, h => ({ ...h, busy: null }))
+}
 // ---------------------------------------------------------------- connectors
 //
 // The app's Connectors menu mixes three sources, and so does this list:

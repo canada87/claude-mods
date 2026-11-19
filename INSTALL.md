@@ -133,6 +133,13 @@ la scheda **Mod** restava vuota con un errore in rosso. Dalla 0.2.0 la lista
 si legge da `installed_plugins.json` e da `enabledPlugins`, senza avviare
 niente. Se vedi ancora la scheda vuota, fai `/reload-plugins`.
 
+**Premo l’interruttore nel pannello e la mod resta accesa.**
+Dalla 0.2.1 il pannello prova a scrivere `enabledPlugins` in
+`~/.claude/settings.json` e, se l’app desktop rifiuta la scrittura a una mod,
+chiede a Claude di farla e lascia il motivo in rosso in fondo alla scheda.
+Prima della 0.2.1 il rifiuto veniva cancellato subito dopo: il tocco sembrava
+non fare niente. In ogni caso la modifica vale dopo `/reload-plugins`.
+
 **La mod non compare per niente** (nessun `⚙ Mod`, nessuna barra).
 Controlla che sia in `enabledPlugins` con valore `true` in
 `~/.claude/settings.json`, e che il percorso in `known_marketplaces.json`

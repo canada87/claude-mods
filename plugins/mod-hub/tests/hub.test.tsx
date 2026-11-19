@@ -85,7 +85,7 @@ type Seen = {
   fills: string[]
 }
 
-type Options = { refuseSwitch?: boolean; categories?: string; noApp?: boolean }
+type Options = { refuseSwitch?: boolean; refuseWrite?: boolean; categories?: string; noApp?: boolean }
 
 function engine(on: On, options: Options = {}): Seen {
   const seen: Seen = { runs: [], writes: [], mcp: [], prompts: [], copies: [], reads: [], listed: false, opens: [], closes: [], fills: [] }
@@ -119,6 +119,8 @@ function engine(on: On, options: Options = {}): Seen {
   })
   on('fs.exists', (_, e) => ({ value: norm(e.path) in files || norm(e.path) === '/repo/.claude/skills/deploy' }))
   on('fs.write', (_, e) => {
+    // The desktop app does not let a mod's code write the person's settings.
+    if (options.refuseWrite) throw new Error('refused: a plugin may not write this file')
     const path = norm(e.path)
     seen.writes.push({ path, text: e.text })
     files[path] = e.text
@@ -397,6 +399,22 @@ test('the row goes off at once, before the reload', async ($, on) => {
 
   expect((await ui.find({ key: 'usage-band@claude-mods' }))?.text).toContain('Spenta')
   expect((await ui.find({ type: 'Text', text: /Ricarica/ }))?.text).toBeDefined()
+  await ui.unmount()
+})
+
+test('where the app refuses the write, Claude is asked to flip the mod', async ($, on) => {
+  const seen = engine(on, { refuseWrite: true })
+  await start($, seen)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'usage-band@claude-mods' })
+  await settle(() => seen.prompts.length > 0)
+  for (let i = 0; i < 300; i++) await Promise.resolve()
+
+  expect(seen.prompts[0]).toContain('"usage-band@claude-mods": false')
+  expect(seen.prompts[0]).toContain('enabledPlugins')
+  expect(seen.prompts[0]).toContain(SETTINGS_FILE)
+  // The refusal stays on the card: a press never looks like it did nothing.
+  expect((await ui.find({ type: 'Text', text: /non mi lascia scrivere/ }))?.text).toContain('usage-band')
   await ui.unmount()
 })
 

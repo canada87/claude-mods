@@ -40,13 +40,19 @@ come verificare, aggiornare e rimuovere, e cosa fare quando qualcosa non va.
 - Terminale: `claude plugin enable <mod>@claude-mods` / `claude plugin disable <mod>@claude-mods`.
 
 L’interruttore del pannello scrive `enabledPlugins` in `~/.claude/settings.json`,
-la stessa chiave e lo stesso file di `claude plugin enable`.
+la stessa chiave e lo stesso file di `claude plugin enable`. Nell’app desktop
+quella scrittura viene rifiutata a una mod: il pannello allora chiede a Claude
+di farla, come per i connettori, e il motivo del rifiuto resta scritto sulla
+scheda.
 
 ### Limiti di `mod-hub` nell'app desktop
 
 - **Mod**: l’elenco si legge da `installed_plugins.json` e da `enabledPlugins`,
   non dalla CLI: una mod non riceve `CLAUDE_CODE_EXECPATH` e il binario
   dell’app non è nel PATH, quindi `claude plugin list` non partirebbe mai.
+  L’interruttore prova a scrivere `~/.claude/settings.json` e, se l’app lo
+  rifiuta, manda a Claude un messaggio firmato dal pannello che chiede la
+  stessa modifica; poi serve comunque ↻ Ricarica.
 - **Connettori**: l'app desktop non lascia che il codice di una mod cambi un
   connettore (in auto mode lo rifiuta). L'interruttore prova la via diretta e,
   se rifiutata, manda a Claude un messaggio firmato dal pannello che chiede di
