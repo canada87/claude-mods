@@ -72,3 +72,28 @@ test('the weekly bar carries six day hairlines, the 5-hour bar four hour ones', 
   expect(await ui.findAll({ type: 'Text', text: '▏' })).toHaveLength(10)
   await ui.unmount()
 })
+
+test('under each bar a hairline holds the time left against the right edge', async ($, on) => {
+  on('state.get', (_, e) => {
+    const key = (e as { key: string }).key
+    if (key === 'limits') {
+      return {
+        value: {
+          value: {
+            five: { percentUsed: 47.3, resetsAt: '2026-11-17T12:13:00Z' },
+            week: { percentUsed: 92, resetsAt: '2026-11-20T14:00:00Z' },
+          },
+          version: 1,
+        },
+      }
+    }
+    return { value: { value: NOW, version: 1 } }
+  })
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  // One glyph for both halves, so a font swap can never stretch the spent side
+  // and clip the fill: spent then left, for the 5-hour bar then the weekly one.
+  const hair = await ui.findAll({ type: 'Text', text: /^━+$/ })
+  expect(hair.map(x => x.text.length)).toEqual([19, 15, 19, 15])
+  await ui.unmount()
+})

@@ -32,7 +32,21 @@ const AURORA = {
   calm: ['#5eead4', '#a5b4fc'],
   warm: ['#a5b4fc', '#fcd34d'],
   hot: ['#fcd34d', '#fda4af'],
+  // The countdown hairline under each bar: time spent, time left.
+  spent: '#5a6778',
+  left: '#8ad9d0',
 } as const
+
+// Each window's whole span, the ground the time left is measured against.
+const SPAN = { five: 5 * 3_600_000, week: 7 * 86_400_000 } as const
+
+// The countdown hairline. Both halves are the same glyph, told apart by colour
+// alone, and each sits in a Box of its own cells: a Text is drawn in the
+// surface's proportional face, where a box-drawing glyph runs near twice a
+// cell wide, so left to itself the line overruns its room and the fill is
+// clipped off the right end. `mono` asks for the face the cells are measured
+// in; the Box holds the boundary wherever the glyph lands.
+const HAIR = '━'
 
 function rgb(h: string): [number, number, number] {
   const n = parseInt(h.slice(1), 16)
@@ -120,13 +134,27 @@ export const register: Register = on => {
     const per = Math.floor((cols - 2 - 4 - 10) / 2)
     const width = Math.max(8, per - 2 - 4 - 9 - 3)
 
+    const hair = (key: string, cells: number, color: string, dim: boolean) =>
+      cells > 0 ? (
+        <Box key={key} width={cells} height={1} flexShrink={0} overflow="hidden">
+          <Text mono wrap="clip" color={color} dimColor={dim}>{HAIR.repeat(cells)}</Text>
+        </Box>
+      ) : null
+
     // `sections` > 1 draws a hairline at each boundary: the weekly bar gets 7,
     // one per day, so the fill reads against the days gone by.
-    const meter = (label: string, w: Window | null, k: string, sections = 1) => {
+    const meter = (label: string, w: Window | null, k: string, sections: number, span: number) => {
       const p = w ? Math.max(0, Math.min(100, w.percentUsed)) : 0
       const filled = w && p > 0 ? Math.max(1, Math.round((p / 100) * width)) : 0
       const [from, to] = stops(p)
       const reset = w ? countdown(w.resetsAt, t) : ''
+
+      // Under the bar the same room runs the other way: the time left over the
+      // window's whole span, held to the right edge, so the hairline starts
+      // full and drains towards the right as the reset comes nearer.
+      const ms = w && w.resetsAt && t ? Date.parse(w.resetsAt) - t : NaN
+      const share = Number.isFinite(ms) ? Math.max(0, Math.min(1, ms / span)) : 0
+      const rest = share > 0 ? Math.max(1, Math.round(share * width)) : 0
       // One continuous bar: a cell per filled column over the track.
       const continuous = (
         <Box flexDirection="row" width={width} height={1} flexShrink={1} overflow="hidden"
@@ -172,18 +200,35 @@ export const register: Register = on => {
       )
 
       return (
-        <Box key={k} flexDirection="row" gap={1} flexGrow={1} flexShrink={1}>
-          <Box flexShrink={0}>
-            <Text color="subtle">{label}</Text>
+        <Box key={k} flexDirection="column" flexGrow={1} flexShrink={1}>
+          <Box flexDirection="row" gap={1}>
+            <Box flexShrink={0}>
+              <Text color="subtle">{label}</Text>
+            </Box>
+            {sections > 1 ? sectioned : continuous}
+            <Box flexShrink={0}>
+              <Text bold tabular color={w ? 'text' : 'inactive'}>
+                {w ? `${shown(p)}%`.padStart(4) : '   –'}
+              </Text>
+            </Box>
+            <Box flexShrink={0}>
+              <Text dimColor tabular>{(reset ? `· ${reset}` : '').padEnd(9)}</Text>
+            </Box>
           </Box>
-          {sections > 1 ? sectioned : continuous}
-          <Box flexShrink={0}>
-            <Text bold tabular color={w ? 'text' : 'inactive'}>
-              {w ? `${shown(p)}%`.padStart(4) : '   –'}
-            </Text>
-          </Box>
-          <Box flexShrink={0}>
-            <Text dimColor tabular>{(reset ? `· ${reset}` : '').padEnd(9)}</Text>
+          <Box flexDirection="row" gap={1}>
+            <Box flexShrink={0} width={label.length}>
+              <Text>{' '.repeat(label.length)}</Text>
+            </Box>
+            <Box flexDirection="row" width={width} height={1} flexShrink={1} overflow="hidden">
+              {hair(`${k}-gone`, width - rest, AURORA.spent, true)}
+              {hair(`${k}-left`, rest, AURORA.left, false)}
+            </Box>
+            <Box flexShrink={0} width={4}>
+              <Text tabular>{'    '}</Text>
+            </Box>
+            <Box flexShrink={0} width={9}>
+              <Text tabular>{'         '}</Text>
+            </Box>
           </Box>
         </Box>
       )
@@ -191,8 +236,8 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="row" width="100%" gap={4} paddingX={1} justifyContent="space-between">
-        {meter('5h', data.five, 'five', 5)}
-        {meter('7g', data.week, 'week', 7)}
+        {meter('5h', data.five, 'five', 5, SPAN.five)}
+        {meter('7g', data.week, 'week', 7, SPAN.week)}
       </Box>
     )
   })
