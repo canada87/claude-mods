@@ -79,6 +79,7 @@ type Seen = {
   prompts: string[]
   copies: string[]
   reads: string[]
+  files: Record<string, string>
   listed: boolean
   opens: string[]
   closes: string[]
@@ -88,13 +89,14 @@ type Seen = {
 type Options = { refuseSwitch?: boolean; refuseWrite?: boolean; categories?: string; noApp?: boolean }
 
 function engine(on: On, options: Options = {}): Seen {
-  const seen: Seen = { runs: [], writes: [], mcp: [], prompts: [], copies: [], reads: [], listed: false, opens: [], closes: [], fills: [] }
-  const files: Record<string, string> = {
+  const seen: Seen = { runs: [], writes: [], files: {}, mcp: [], prompts: [], copies: [], reads: [], listed: false, opens: [], closes: [], fills: [] }
+  const files: Record<string, string> = seen.files
+  Object.assign(files, {
     [`${PROFILE}/claude_desktop_config.json`]: DESKTOP_CONFIG,
     [INSTALLED_FILE]: INSTALLED,
     [SETTINGS_FILE]: SETTINGS,
     ...(options.categories ? { [CATEGORIES]: options.categories } : {}),
-  }
+  })
   // A mod is not passed CLAUDE_CODE_EXECPATH: the profile is found by listing.
   const vars: Record<string, string> = { LOCALAPPDATA: LOCAL, USERPROFILE: HOME }
   on('fs.list', (_, e) => {
@@ -109,6 +111,7 @@ function engine(on: On, options: Options = {}): Seen {
   on('command.register', () => ({ value: { command: 'mods' } }))
   on('env.get', (_, e) => ({ value: vars[e.name] }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
   on('fs.read', (_, e) => {
     const path = norm(e.path)
     seen.reads.push(path)
@@ -415,6 +418,40 @@ test('where the app refuses the write, Claude is asked to flip the mod', async (
   expect(seen.prompts[0]).toContain(SETTINGS_FILE)
   // The refusal stays on the card: a press never looks like it did nothing.
   expect((await ui.find({ type: 'Text', text: /non mi lascia scrivere/ }))?.text).toContain('usage-band')
+  await ui.unmount()
+})
+
+// What a turn's end looks like to a hook.
+const TURN = { answer: 'ok', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as const
+
+test('the row catches up when a turn ends, the refusal still on the card', async ($, on) => {
+  const seen = engine(on, { refuseWrite: true })
+  await start($, seen)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'usage-band@claude-mods' })
+  await settle(() => seen.prompts.length > 0)
+
+  // Claude writes what the panel asked for; the turn ends.
+  seen.files[SETTINGS_FILE] = JSON.stringify({ enabledPlugins: { 'usage-band@claude-mods': false, 'mod-hub@claude-mods': true } })
+  await $.turn.complete(TURN)
+  for (let i = 0; i < 300; i++) await Promise.resolve()
+
+  expect((await ui.find({ key: 'usage-band@claude-mods' }))?.text).toContain('Spenta')
+  expect((await ui.find({ type: 'Text', text: /non mi lascia scrivere/ }))?.text).toContain('usage-band')
+  await ui.unmount()
+})
+
+test('a mod Claude already switched is not asked for twice', async ($, on) => {
+  const seen = engine(on, { refuseWrite: true })
+  await start($, seen)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  // The file says off while the row, drawn before, still says on.
+  seen.files[SETTINGS_FILE] = JSON.stringify({ enabledPlugins: { 'usage-band@claude-mods': false, 'mod-hub@claude-mods': true } })
+  await ui.press({ key: 'usage-band@claude-mods' })
+  for (let i = 0; i < 300; i++) await Promise.resolve()
+
+  expect(seen.prompts).toEqual([])
+  expect((await ui.find({ key: 'usage-band@claude-mods' }))?.text).toContain('Spenta')
   await ui.unmount()
 })
 

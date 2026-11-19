@@ -102,7 +102,9 @@ async function readEnabled($: EngineInterface, dir: string): Promise<Record<stri
   }
 }
 
-async function refreshMods($: EngineInterface): Promise<void> {
+// `keepError` leaves a message another step put on the card: the list is
+// refreshed at the end of every turn, and that must not wipe a refusal.
+async function refreshMods($: EngineInterface, options: { keepError?: boolean } = {}): Promise<void> {
   try {
     const dir = await configDir($)
     const file = JSON.parse(await $.fs.read(`${dir}/plugins/installed_plugins.json`)) as InstalledFile
@@ -116,7 +118,7 @@ async function refreshMods($: EngineInterface): Promise<void> {
       }),
     )
     mods.sort((a, b) => a.name.localeCompare(b.name))
-    await update($, hub, h => ({ ...h, mods, error: null }))
+    await update($, hub, h => ({ ...h, mods, error: options.keepError === true ? h.error : null }))
   } catch (err) {
     await update($, hub, h => ({ ...h, error: `Non riesco a leggere le mod: ${message(err)}` }))
   }
@@ -143,9 +145,16 @@ async function toggleMod($: EngineInterface, mod: Mod): Promise<void> {
   const verb = wanted ? 'attivata' : 'disattivata'
   await update($, hub, h => ({ ...h, busy: mod.id, error: null }))
   try {
-    await writeEnabled($, mod.id, wanted)
-    await update($, hub, h => ({ ...h, needsReload: true }))
-    $.ui.toast(`${mod.name} ${verb}: premi Ricarica per applicare`)
+    // Claude may have written it already, asked by an earlier press: the row
+    // catches up only at the end of that turn, so never ask for it twice.
+    if (((await readEnabled($, await configDir($)))[mod.id] === true) === wanted) {
+      await update($, hub, h => ({ ...h, needsReload: true }))
+      $.ui.toast(`${mod.name} è già ${verb}: premi Ricarica per applicare`)
+    } else {
+      await writeEnabled($, mod.id, wanted)
+      await update($, hub, h => ({ ...h, needsReload: true }))
+      $.ui.toast(`${mod.name} ${verb}: premi Ricarica per applicare`)
+    }
     await refreshMods($)
   } catch (err) {
     // Sent framed as this plugin's message (no asUser): the transcript and
@@ -590,10 +599,15 @@ export const register: Register = on => {
     )
   })
 
-  // A connector flipped by Claude, or from the app's menu, shows once a turn ends.
+  // A connector flipped by Claude, or from the app's menu, shows once a turn
+  // ends; so does a mod Claude switched because the app refused the panel
+  // the write. The card's message stays: only its own read clears it.
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
-    if (e.agentId === undefined) void refreshConnectors($)
+    if (e.agentId === undefined) {
+      void refreshConnectors($)
+      void refreshMods($, { keepError: true })
+    }
     return result
   })
 

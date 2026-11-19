@@ -52,7 +52,9 @@ scheda.
   dell’app non è nel PATH, quindi `claude plugin list` non partirebbe mai.
   L’interruttore prova a scrivere `~/.claude/settings.json` e, se l’app lo
   rifiuta, manda a Claude un messaggio firmato dal pannello che chiede la
-  stessa modifica; poi serve comunque ↻ Ricarica.
+  stessa modifica; poi serve comunque ↻ Ricarica. La riga si aggiorna a
+  fine turno, quando Claude ha scritto, e un secondo tocco non richiede due
+  volte la stessa cosa.
 - **Connettori**: l'app desktop non lascia che il codice di una mod cambi un
   connettore (in auto mode lo rifiuta). L'interruttore prova la via diretta e,
   se rifiutata, manda a Claude un messaggio firmato dal pannello che chiede di

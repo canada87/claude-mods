@@ -138,7 +138,8 @@ Dalla 0.2.1 il pannello prova a scrivere `enabledPlugins` in
 `~/.claude/settings.json` e, se l’app desktop rifiuta la scrittura a una mod,
 chiede a Claude di farla e lascia il motivo in rosso in fondo alla scheda.
 Prima della 0.2.1 il rifiuto veniva cancellato subito dopo: il tocco sembrava
-non fare niente. In ogni caso la modifica vale dopo `/reload-plugins`.
+non fare niente. La riga si aggiorna a fine turno, appena Claude ha scritto;
+in ogni caso la modifica vale dopo `/reload-plugins`.
 
 **La mod non compare per niente** (nessun `⚙ Mod`, nessuna barra).
 Controlla che sia in `enabledPlugins` con valore `true` in

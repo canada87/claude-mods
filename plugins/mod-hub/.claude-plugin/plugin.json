@@ -1,8 +1,0 @@
-{
-  "name": "mod-hub",
-  "version": "0.2.1",
-  "description": "Pannello laterale (/mods) con i connettori della sessione da accendere e spegnere, le skill da copiare nel messaggio e le mod installate.",
-  "author": { "name": "canada87" },
-  "license": "MIT",
-  "types": "./types/index.d.ts"
-}
