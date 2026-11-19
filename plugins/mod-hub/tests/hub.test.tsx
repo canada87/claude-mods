@@ -275,16 +275,19 @@ test("a switch flips the connector through the app's own tool", async ($, on) =>
   await ui.unmount()
 })
 
-test('where the app refuses a mod the switch, Claude is asked to flip it', async ($, on) => {
+test('where the app refuses a mod the switch, the card points at its menu', async ($, on) => {
   const seen = engine(on, { refuseSwitch: true })
   await start($, seen)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'conn:Claude Docs' })
-  await settle(() => seen.prompts.length > 0)
+  await settle(() => seen.mcp.some(c => c.tool === 'set_session_connector_enabled'))
+  for (let i = 0; i < 300; i++) await Promise.resolve()
 
-  expect(seen.prompts).toHaveLength(1)
-  expect(seen.prompts[0]).toContain('disattiva il connettore "Claude Docs" per questa sessione.')
-  expect((await ui.find({ key: 'conn:Claude Docs' }))?.text).toContain('…')
+  // A switch costs no tokens: nothing is sent to Claude.
+  expect(seen.prompts).toEqual([])
+  expect((await ui.find({ type: 'Text', text: /Connettori dell/ }))?.text).toContain('Claude Docs')
+  // The row stops waiting: it shows the connector as it still is.
+  expect((await ui.find({ key: 'conn:Claude Docs' }))?.text).not.toContain('…')
   await ui.unmount()
 })
 

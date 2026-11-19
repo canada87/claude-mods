@@ -56,9 +56,8 @@ non passa mai da Claude.
   un interruttore non consuma token. Poi serve ↻ Ricarica.
 - **Connettori**: l'app desktop non lascia che il codice di una mod cambi un
   connettore (in auto mode lo rifiuta). L'interruttore prova la via diretta e,
-  se rifiutata, manda a Claude un messaggio firmato dal pannello che chiede di
-  accendere o spegnere quel connettore: il cambio arriva a fine turno e diventa
-  anche il predefinito delle nuove sessioni.
+  se rifiutata, lo scrive sulla scheda e rimanda al menu **+ → Connettori**
+  dell'app. Neanche qui viene chiesto niente a Claude.
 - **Server locali e Claude in Chrome**: l'elenco viene da
   `claude_desktop_config.json` dell'app (se ne leggono solo i nomi) e dagli
   strumenti della sessione. Nessuno strumento dell'app li accende o spegne,

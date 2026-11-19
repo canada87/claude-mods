@@ -388,19 +388,18 @@ async function toggleConnector($: EngineInterface, connector: Connector): Promis
     })
     if (result.isError) throw new Error('rifiutato')
     $.ui.toast(`${connector.name} ${verb}: vale dal prossimo messaggio`)
-  } catch {
-    // Sent framed as this plugin's message (no asUser): the transcript and the
-    // model see it came from the panel's switch, not typed by the person.
-    const ask =
-      `Dal pannello Mod è stato premuto l'interruttore di un connettore: ` +
-      `${wanted ? 'attiva' : 'disattiva'} il connettore "${connector.name}" per questa sessione.`
-    $.prompt.submit({ text: ask }).catch(async (err: unknown) => {
-      await update($, hub, h => {
-        const { [connector.name]: _, ...pending } = h.pending
-        return { ...h, pending, connectorError: `${connector.name}: ${message(err)}` }
-      })
+  } catch (err) {
+    // Nothing is sent to Claude: a switch costs no tokens. Where the app
+    // refuses its own tool to a mod, the app's menu is the way.
+    await update($, hub, h => {
+      const { [connector.name]: _, ...pending } = h.pending
+      return {
+        ...h,
+        pending,
+        connectorError: `${connector.name}: l'app non mi lascia cambiarlo (${message(err)}). Usa + → Connettori dell'app.`,
+      }
     })
-    $.ui.toast(`Chiesto a Claude: ${connector.name} ${verb} appena la sessione è libera`)
+    $.ui.toast(`${connector.name}: cambialo da + → Connettori dell'app`)
   }
   await update($, hub, h => ({ ...h, busy: null }))
 }

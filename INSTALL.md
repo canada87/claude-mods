@@ -142,8 +142,10 @@ l’app si porta dentro `%LOCALAPPDATA%/Claude-Data/<profilo>/claude-code/...`
 nemmeno quello, la scheda dice di usare **+ → Plugins** e scrive il motivo in
 rosso. Il cambio vale dopo `/reload-plugins`.
 
-Un interruttore non manda mai niente a Claude: premerlo non consuma token.
-Le versioni 0.2.1 e 0.2.2 lo facevano — era un errore, corretto nella 0.3.0.
+Nessun interruttore del pannello manda niente a Claude: premerlo non consuma
+token, né per le mod né per i connettori. Le versioni 0.2.1 e 0.2.2 lo
+facevano per le mod — era un errore, corretto nella 0.3.0; per i connettori
+è stato tolto nella 0.3.1.
 
 **La mod non compare per niente** (nessun `⚙ Mod`, nessuna barra).
 Controlla che sia in `enabledPlugins` con valore `true` in
