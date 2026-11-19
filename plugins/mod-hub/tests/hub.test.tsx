@@ -21,12 +21,24 @@ const LOCAL = '/local'
 const PROFILE = `${LOCAL}/Claude-Data/claude_abc`
 const HOME = '/home/u'
 const CATEGORIES = `${HOME}/.claude/mod-hub/categorie.json`
+const INSTALLED_FILE = `${HOME}/.claude/plugins/installed_plugins.json`
+const SETTINGS_FILE = `${HOME}/.claude/settings.json`
 
-const LIST = JSON.stringify([
-  { id: 'usage-band@claude-mods', enabled: true },
-  { id: 'cyberpunk-look@claude-mods', enabled: false },
-  { id: 'mod-hub@claude-mods', enabled: true },
-])
+// What Claude Code writes when a mod is installed: the hub reads these two
+// files, never the `claude` CLI (not on PATH under the desktop app).
+const INSTALLED = JSON.stringify({
+  version: 2,
+  plugins: {
+    'usage-band@claude-mods': [{ scope: 'user', installPath: `${HOME}/.claude/plugins/cache/claude-mods/usage-band/0.1.0` }],
+    'cyberpunk-look@claude-mods': [{ scope: 'user', installPath: `${HOME}/.claude/plugins/cache/claude-mods/cyberpunk-look/0.1.0` }],
+    'mod-hub@claude-mods': [{ scope: 'user', installPath: `${HOME}/.claude/plugins/cache/claude-mods/mod-hub/0.1.0` }],
+  },
+})
+
+const SETTINGS = JSON.stringify({
+  enabledPlugins: { 'usage-band@claude-mods': true, 'mod-hub@claude-mods': true },
+  extraKnownMarketplaces: { 'claude-mods': { source: { source: 'directory', path: '/repo' } } },
+})
 
 // What the app's session_connectors_status answers: claude.ai connectors and
 // the session's servers; disabled local servers are missing from it.
@@ -62,6 +74,7 @@ const COMMANDS = [
 
 type Seen = {
   runs: string[][]
+  writes: { path: string; text: string }[]
   mcp: { tool: string; args: Record<string, unknown> }[]
   prompts: string[]
   copies: string[]
@@ -75,9 +88,11 @@ type Seen = {
 type Options = { refuseSwitch?: boolean; categories?: string; noApp?: boolean }
 
 function engine(on: On, options: Options = {}): Seen {
-  const seen: Seen = { runs: [], mcp: [], prompts: [], copies: [], reads: [], listed: false, opens: [], closes: [], fills: [] }
+  const seen: Seen = { runs: [], writes: [], mcp: [], prompts: [], copies: [], reads: [], listed: false, opens: [], closes: [], fills: [] }
   const files: Record<string, string> = {
     [`${PROFILE}/claude_desktop_config.json`]: DESKTOP_CONFIG,
+    [INSTALLED_FILE]: INSTALLED,
+    [SETTINGS_FILE]: SETTINGS,
     ...(options.categories ? { [CATEGORIES]: options.categories } : {}),
   }
   // A mod is not passed CLAUDE_CODE_EXECPATH: the profile is found by listing.
@@ -103,11 +118,17 @@ function engine(on: On, options: Options = {}): Seen {
     return { value: text }
   })
   on('fs.exists', (_, e) => ({ value: norm(e.path) in files || norm(e.path) === '/repo/.claude/skills/deploy' }))
+  on('fs.write', (_, e) => {
+    const path = norm(e.path)
+    seen.writes.push({ path, text: e.text })
+    files[path] = e.text
+    return { value: undefined } as never
+  })
+  on('settings.read', () => ({ value: JSON.parse(SETTINGS) }) as never)
   on('process.run', (_, e) => {
     const argv = [...(e as { argv: readonly string[] }).argv]
     seen.runs.push(argv)
-    const stdout = argv.includes('list') ? LIST : ''
-    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('command.list', () => {
     seen.listed = true
@@ -168,7 +189,7 @@ const START = { cwd: '/repo', surface: 'desktop', isInteractive: true } as const
 type Kit = Parameters<TestBody>[0]
 async function start($: Kit, seen: Seen): Promise<void> {
   await $.session.start(START)
-  await settle(() => seen.listed && seen.runs.some(a => a.includes('list')) && seen.mcp.length > 0)
+  await settle(() => seen.listed && seen.reads.includes(INSTALLED_FILE) && seen.mcp.length > 0)
   for (let i = 0; i < 300; i++) await Promise.resolve()
 }
 
@@ -344,14 +365,38 @@ test('three rounded cards: titles large, filter in the Skill header, notes in th
   await ui.unmount()
 })
 
-test('a press disables an active mod through the CLI', async ($, on) => {
+test('a press disables an active mod in settings.json, nothing else touched', async ($, on) => {
   const seen = engine(on)
   await start($, seen)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'usage-band@claude-mods' })
-  await settle(() => seen.runs.some(a => a.includes('disable')))
+  await settle(() => seen.writes.length > 0)
 
-  expect(seen.runs.some(a => a.slice(-3).join(' ') === 'plugin disable usage-band@claude-mods')).toBe(true)
+  const write = seen.writes.find(w => w.path === SETTINGS_FILE)
+  expect(write).toBeDefined()
+  const written = JSON.parse(write?.text ?? '{}') as {
+    enabledPlugins: Record<string, boolean>
+    extraKnownMarketplaces: unknown
+  }
+  expect(written.enabledPlugins['usage-band@claude-mods']).toBe(false)
+  expect(written.enabledPlugins['mod-hub@claude-mods']).toBe(true)
+  // The rest of the person's settings survives the switch.
+  expect(written.extraKnownMarketplaces).toEqual(JSON.parse(SETTINGS).extraKnownMarketplaces)
+  // No `claude` is started: the binary is not on PATH under the desktop app.
+  expect(seen.runs).toEqual([])
+  await ui.unmount()
+})
+
+test('the row goes off at once, before the reload', async ($, on) => {
+  const seen = engine(on)
+  await start($, seen)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'usage-band@claude-mods' })
+  await settle(() => seen.writes.length > 0)
+  for (let i = 0; i < 300; i++) await Promise.resolve()
+
+  expect((await ui.find({ key: 'usage-band@claude-mods' }))?.text).toContain('Spenta')
+  expect((await ui.find({ type: 'Text', text: /Ricarica/ }))?.text).toBeDefined()
   await ui.unmount()
 })
 

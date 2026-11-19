@@ -47,24 +47,28 @@ async function env(read: () => Promise<string | undefined>): Promise<string | un
 }
 
 // ---------------------------------------------------------------- mods
+//
+// The mods come from the files Claude Code itself keeps, never from the
+// `claude` CLI: a mod is not passed CLAUDE_CODE_EXECPATH and the desktop
+// app's own binary is not on PATH, so `claude plugin list` never starts
+// there and the card stayed empty. `installed_plugins.json` says what is
+// installed and where; `enabledPlugins` says what is on.
 
-type Listed = {
-  id: string
-  enabled: boolean
-  readFromFolder?: string
-  installPath?: string
+type InstalledRow = { installPath?: unknown }
+type InstalledFile = { plugins?: Record<string, InstalledRow[]> }
+
+// Claude Code's own folder: CLAUDE_CONFIG_DIR, else ~/.claude.
+async function configDir($: EngineInterface): Promise<string> {
+  const set = await env(() => $.env.get('CLAUDE_CONFIG_DIR'))
+  if (set) return set.replace(/\\/g, '/')
+  const home = (await env(() => $.env.get('USERPROFILE'))) ?? (await env(() => $.env.get('HOME'))) ?? '~'
+  return `${home.replace(/\\/g, '/')}/.claude`
 }
 
-async function claudeExe($: EngineInterface): Promise<string> {
-  // The Claude Code binary this session runs on; the PATH one may be older.
-  return (await env(() => $.env.get('CLAUDE_CODE_EXECPATH'))) ?? 'claude'
-}
-
-async function describe($: EngineInterface, row: Listed): Promise<string> {
-  const folder = row.readFromFolder ?? row.installPath
+async function describe($: EngineInterface, folder: string | undefined): Promise<string> {
   if (!folder) return ''
   try {
-    const manifest = JSON.parse(await $.fs.read(`${folder}/.claude-plugin/plugin.json`)) as {
+    const manifest = JSON.parse(await $.fs.read(`${folder.replace(/\\/g, '/')}/.claude-plugin/plugin.json`)) as {
       description?: unknown
     }
     return typeof manifest.description === 'string' ? manifest.description : ''
@@ -73,16 +77,42 @@ async function describe($: EngineInterface, row: Listed): Promise<string> {
   }
 }
 
+function enabledMap(value: unknown): Record<string, boolean> {
+  if (typeof value !== 'object' || value === null) return {}
+  const map: Record<string, boolean> = {}
+  for (const [id, on] of Object.entries(value as Record<string, unknown>)) map[id] = on === true
+  return map
+}
+
+// Which mods are on: every settings source as the engine merges them, then
+// the person's own settings.json on top, so a switch shows at once instead
+// of waiting for the reload that makes the engine read the file again.
+async function readEnabled($: EngineInterface, dir: string): Promise<Record<string, boolean>> {
+  let merged: Record<string, boolean> = {}
+  try {
+    merged = enabledMap(await $.settings.read({ key: 'enabledPlugins' }))
+  } catch {
+    // no settings to read: the file below may still have them
+  }
+  try {
+    const user = JSON.parse(await $.fs.read(`${dir}/settings.json`)) as { enabledPlugins?: unknown }
+    return { ...merged, ...enabledMap(user.enabledPlugins) }
+  } catch {
+    return merged
+  }
+}
+
 async function refreshMods($: EngineInterface): Promise<void> {
   try {
-    const exe = await claudeExe($)
-    const { exitCode, stdout, stderr } = await $.process.run([exe, 'plugin', 'list', '--json'])
-    if (exitCode !== 0) throw new Error(stderr.trim() || `exit ${exitCode}`)
-    const rows = JSON.parse(stdout) as Listed[]
+    const dir = await configDir($)
+    const file = JSON.parse(await $.fs.read(`${dir}/plugins/installed_plugins.json`)) as InstalledFile
+    const enabled = await readEnabled($, dir)
     const mods: Mod[] = await Promise.all(
-      rows.map(async row => {
-        const [name = row.id, marketplace = ''] = row.id.split('@')
-        return { id: row.id, name, marketplace, enabled: row.enabled, description: await describe($, row) }
+      Object.entries(file.plugins ?? {}).map(async ([id, rows]) => {
+        const [name = id, marketplace = ''] = id.split('@')
+        const row = Array.isArray(rows) ? rows[0] : undefined
+        const folder = typeof row?.installPath === 'string' ? row.installPath : undefined
+        return { id, name, marketplace, enabled: enabled[id] === true, description: await describe($, folder) }
       }),
     )
     mods.sort((a, b) => a.name.localeCompare(b.name))
@@ -92,13 +122,19 @@ async function refreshMods($: EngineInterface): Promise<void> {
   }
 }
 
+// A switch writes `enabledPlugins` in the person's own settings.json, the
+// same key and file `claude plugin enable` writes; the reload applies it.
 async function toggleMod($: EngineInterface, mod: Mod): Promise<void> {
   await update($, hub, h => ({ ...h, busy: mod.id, error: null }))
   try {
-    const exe = await claudeExe($)
-    const verb = mod.enabled ? 'disable' : 'enable'
-    const { exitCode, stderr } = await $.process.run([exe, 'plugin', verb, mod.id])
-    if (exitCode !== 0) throw new Error(stderr.trim() || `exit ${exitCode}`)
+    const path = `${await configDir($)}/settings.json`
+    let settings: Record<string, unknown> = {}
+    if (await $.fs.exists(path)) {
+      // A file that is there and unreadable is never written over.
+      settings = JSON.parse(await $.fs.read(path)) as Record<string, unknown>
+    }
+    const enabledPlugins = { ...enabledMap(settings.enabledPlugins), [mod.id]: !mod.enabled }
+    await $.fs.write(path, `${JSON.stringify({ ...settings, enabledPlugins }, null, 2)}\n`)
     await update($, hub, h => ({ ...h, needsReload: true }))
     $.ui.toast(`${mod.name} ${mod.enabled ? 'disattivata' : 'attivata'}: premi Ricarica per applicare`)
   } catch (err) {
@@ -301,8 +337,7 @@ async function toggleConnector($: EngineInterface, connector: Connector): Promis
 type Categories = { name: string; patterns: string[] }[]
 
 async function categoriesFile($: EngineInterface): Promise<string> {
-  const home = (await env(() => $.env.get('USERPROFILE'))) ?? (await env(() => $.env.get('HOME'))) ?? '~'
-  return `${home.replace(/\\/g, '/')}/.claude/mod-hub/categorie.json`
+  return `${await configDir($)}/mod-hub/categorie.json`
 }
 
 async function readCategories($: EngineInterface, path: string): Promise<Categories | { error: string } | null> {

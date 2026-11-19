@@ -15,22 +15,22 @@ disattivano le singole mod.
 
 ## Installazione
 
-Da un terminale con Claude Code:
+Due passi: si aggiunge il marketplace, poi si installano le mod. Nell’app
+desktop: **+** accanto alla casella del messaggio → **Plugins** → *Add
+marketplace* con `canada87/claude-mods` (o con il percorso di questa
+cartella) → *Add plugin* su ogni mod → `/reload-plugins`.
 
-```
-/plugin marketplace add canada87/claude-mods
-/plugin install usage-band@claude-mods
-```
-
-Oppure da shell:
+Con la CLI installata (`npm install -g @anthropic-ai/claude-code`; il binario
+dell’app desktop non sta nel PATH):
 
 ```bash
 claude plugin marketplace add canada87/claude-mods
-claude plugin install usage-band@claude-mods
+claude plugin install mod-hub@claude-mods
 ```
 
-Nell'app desktop: **+** accanto alla casella del messaggio → **Plugins** →
-*Add marketplace* con `canada87/claude-mods` → *Add plugin*.
+**[INSTALL.md](INSTALL.md)** è la guida completa: le due strade
+(GitHub o cartella locale) e quando usarle, i file che Claude Code scrive,
+come verificare, aggiornare e rimuovere, e cosa fare quando qualcosa non va.
 
 ## Attivare e disattivare
 
@@ -39,8 +39,14 @@ Nell'app desktop: **+** accanto alla casella del messaggio → **Plugins** →
 - App desktop: **+** → **Plugins**, interruttore accanto a ogni mod.
 - Terminale: `claude plugin enable <mod>@claude-mods` / `claude plugin disable <mod>@claude-mods`.
 
+L’interruttore del pannello scrive `enabledPlugins` in `~/.claude/settings.json`,
+la stessa chiave e lo stesso file di `claude plugin enable`.
+
 ### Limiti di `mod-hub` nell'app desktop
 
+- **Mod**: l’elenco si legge da `installed_plugins.json` e da `enabledPlugins`,
+  non dalla CLI: una mod non riceve `CLAUDE_CODE_EXECPATH` e il binario
+  dell’app non è nel PATH, quindi `claude plugin list` non partirebbe mai.
 - **Connettori**: l'app desktop non lascia che il codice di una mod cambi un
   connettore (in auto mode lo rifiuta). L'interruttore prova la via diretta e,
   se rifiutata, manda a Claude un messaggio firmato dal pannello che chiede di
@@ -80,7 +86,9 @@ le skill non elencate restano nei gruppi per provenienza. Il file si rilegge con
 
 Ogni mod vive in `plugins/<nome>/`. Con il marketplace aggiunto come cartella
 locale (`claude plugin marketplace add <questa cartella>`) le modifiche si
-leggono direttamente da qui: dopo un cambio basta `/reload-plugins`.
+leggono direttamente da qui: dopo un cambio basta `/reload-plugins`. I
+dettagli, e la differenza con l’installazione da GitHub, sono in
+[INSTALL.md](INSTALL.md).
 
 ```bash
 claude plugin validate plugins/usage-band
