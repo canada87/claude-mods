@@ -45,7 +45,10 @@ const SPAN = { five: 5 * 3_600_000, week: 7 * 86_400_000 } as const
 // surface's proportional face, where a box-drawing glyph runs near twice a
 // cell wide, so left to itself the line overruns its room and the fill is
 // clipped off the right end. `mono` asks for the face the cells are measured
-// in; the Box holds the boundary wherever the glyph lands.
+// in; the Box holds the boundary wherever the glyph lands. Each run carries
+// twice the glyphs its cells need and the Box (one row, overflow hidden) cuts
+// the rest: never short of its room, so no gap, and never truncated by the
+// Text itself, which would end the run in an ellipsis.
 const HAIR = '━'
 
 function rgb(h: string): [number, number, number] {
@@ -137,7 +140,7 @@ export const register: Register = on => {
     const hair = (key: string, cells: number, color: string, dim: boolean) =>
       cells > 0 ? (
         <Box key={key} width={cells} height={1} flexShrink={0} overflow="hidden">
-          <Text mono wrap="truncate-end" color={color} dimColor={dim}>{HAIR.repeat(cells)}</Text>
+          <Text mono wrap="wrap" color={color} dimColor={dim}>{HAIR.repeat(cells * 2)}</Text>
         </Box>
       ) : null
 

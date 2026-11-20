@@ -93,7 +93,9 @@ test('under each bar a hairline holds the time left against the right edge', asy
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
   // One glyph for both halves, so a font swap can never stretch the spent side
   // and clip the fill: spent then left, for the 5-hour bar then the weekly one.
+  // Each run is overfilled twice its cells and cut by its Box, never by an ellipsis.
   const hair = await ui.findAll({ type: 'Text', text: /^━+$/ })
-  expect(hair.map(x => x.text.length)).toEqual([19, 15, 19, 15])
+  expect(hair.map(x => x.text.length)).toEqual([38, 30, 38, 30])
+  expect(hair.every(x => (x.props as { wrap?: string }).wrap === 'wrap')).toBe(true)
   await ui.unmount()
 })
