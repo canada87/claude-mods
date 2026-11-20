@@ -1,6 +1,6 @@
 {
   "name": "usage-band",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Barra Aurora sopra il prompt con i limiti d'uso delle 5 ore e della settimana.",
   "types": "./types/index.d.ts",
   "author": {

@@ -137,7 +137,7 @@ export const register: Register = on => {
     const hair = (key: string, cells: number, color: string, dim: boolean) =>
       cells > 0 ? (
         <Box key={key} width={cells} height={1} flexShrink={0} overflow="hidden">
-          <Text mono wrap="clip" color={color} dimColor={dim}>{HAIR.repeat(cells)}</Text>
+          <Text mono wrap="truncate-end" color={color} dimColor={dim}>{HAIR.repeat(cells)}</Text>
         </Box>
       ) : null
 
